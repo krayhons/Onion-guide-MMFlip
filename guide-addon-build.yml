@@ -1,0 +1,164 @@
+# Builds the two guide-reader binaries on GitHub's runners - no local
+# toolchain, no Docker, nothing to install on your PC.
+#
+# Put this file in your fork at .github/workflows/guide-addon-build.yml,
+# on the branch that has the guide reader patch applied. Then:
+#   Actions tab -> "Build guide reader add-on" -> Run workflow
+#   -> pick that branch -> download the "guide-reader-bin" artifact.
+#
+# Checkout and artifact upload run on the runner itself; only the compile
+# happens inside Onion's toolchain image. That keeps the current actions
+# (which need Node 24) away from the container's older runtime.
+
+name: Build guide reader add-on
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_ref:
+        description: >-
+          Branch this build is based on, WITHOUT the guide patch. Used to
+          build a stock keymon and fingerprint it, so the installer can tell
+          whether the device is running that same build. For a Miyoo Mini
+          Flip, name the Flip branch you built on top of - as of the
+          v4.5-dev-pr-1860 release that is "feat/mm-flip-lid-settings".
+        default: main
+        required: true
+
+jobs:
+  build:
+    name: Build add-on binaries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # the base branch is needed for the fingerprint step
+
+      # Fails early with a readable message instead of a bare exit 1 from make
+      - name: Check the patch is applied on this branch
+        run: |
+          missing=0
+          for f in src/guideReader/guideReader.c src/guideReader/Makefile \
+                   src/guidemon/guidemon.c src/guidemon/Makefile; do
+            if [ ! -f "$f" ]; then
+              echo "::error::$f is missing"
+              missing=1
+            fi
+          done
+          if [ $missing -ne 0 ]; then
+            echo "::error::onion-guide-reader.patch is not applied on this branch."
+            echo "Branch: ${{ github.ref_name }}"
+            echo "Apply the patch, commit, push, then run the workflow against that branch."
+            exit 1
+          fi
+          echo "Patch is present."
+
+      - name: Pull the toolchain image
+        run: |
+          for attempt in 1 2 3; do
+            if docker pull aemiii91/miyoomini-toolchain:latest; then
+              exit 0
+            fi
+            echo "pull failed (attempt $attempt), retrying in 30s..."
+            sleep 30
+          done
+          echo "::error::Could not pull aemiii91/miyoomini-toolchain:latest"
+          echo "Docker Hub rate limits anonymous pulls from GitHub runners; try re-running."
+          exit 1
+
+      - name: Build guideReader, guidemon, Tweaks and keymon
+        run: |
+          mkdir -p build_addon
+          docker run --rm -v "${{ github.workspace }}":/root/workspace \
+            aemiii91/miyoomini-toolchain:latest /bin/bash -c '
+              source /root/.bashrc
+              echo ":: CROSS_COMPILE=$CROSS_COMPILE UNION_PLATFORM=$UNION_PLATFORM"
+              ${CROSS_COMPILE}gcc --version | head -1
+              for t in guideReader guidemon tweaks keymon; do
+                echo "::group::building $t"
+                cd /root/workspace/src/$t || exit 1
+                BUILD_DIR=/root/workspace/build_addon PLATFORM=miyoomini make
+                echo "::endgroup::"
+              done
+            '
+
+      # The installer compares this against the version on the device and warns
+      # if they differ - the patched Tweaks in particular is version-specific
+      - name: Record the Onion version and the guide action number
+        run: |
+          version="v$(grep -m1 '^VERSION=' Makefile | cut -d= -f2)"
+          echo -n "$version" > build_addon/built-for.txt
+
+          action=$(grep -m1 'define INGAME_ACTION_GUIDE' \
+                   src/common/system/ingame_action.h | tr -dc '0-9')
+          echo -n "$action" > build_addon/guide-action.txt
+
+          echo "built for $version, guide action $action"
+
+      # Fingerprint the stock keymon by building it from the base branch.
+      #
+      # This replaces downloading the official release, which only ever worked
+      # for OnionUI/Onion. Building from source works for any fork - including
+      # the Miyoo Mini Flip branches, which publish no releases at all - and
+      # gives a match whenever the device runs a build made from the same
+      # commit with the same toolchain.
+      #
+      # If it can't be built, "unknown" is recorded and the installer falls
+      # back to the route that replaces nothing.
+      - name: Fingerprint the stock keymon from ${{ inputs.base_ref }}
+        run: |
+          set +e
+          echo -n "unknown" > build_addon/keymon.stock.md5
+
+          rm -rf /tmp/base
+          git worktree add --detach /tmp/base "origin/${{ inputs.base_ref }}" || {
+            echo "::warning::couldn't check out ${{ inputs.base_ref }} - keymon swap will be skipped"
+            exit 0
+          }
+
+          if grep -q "INGAME_ACTION_GUIDE" /tmp/base/src/keymon/menuButtonAction.h; then
+            echo "::warning::${{ inputs.base_ref }} already has the guide patch - it must be the branch WITHOUT it"
+            exit 0
+          fi
+
+          mkdir -p /tmp/base_build
+          docker run --rm -v /tmp/base:/root/workspace -v /tmp/base_build:/root/out \
+            aemiii91/miyoomini-toolchain:latest /bin/bash -c '
+              source /root/.bashrc
+              cd /root/workspace/src/keymon
+              BUILD_DIR=/root/out PLATFORM=miyoomini make
+            ' || exit 0
+
+          [ -f /tmp/base_build/keymon ] || exit 0
+
+          md5sum /tmp/base_build/keymon | cut -d' ' -f1 > build_addon/keymon.stock.md5
+          echo "stock keymon (${{ inputs.base_ref }}): $(cat build_addon/keymon.stock.md5)"
+
+      - name: Record what this was built from
+        run: |
+          echo -n "${{ github.repository }}@$(git rev-parse --short HEAD) (base: ${{ inputs.base_ref }})" \
+            > build_addon/built-from.txt
+          cat build_addon/built-from.txt
+
+      # Onion s build rules run the compiler inside a shell substitution, so a
+      # compile error does not stop make - it shows up in the log and the link
+      # fails afterwards. Check the binaries really exist.
+      - name: Verify output
+        run: |
+          for b in guideReader guidemon tweaks keymon; do
+            if [ ! -f "build_addon/$b" ]; then
+              echo "::error::build_addon/$b was not produced - scroll up in the build step"
+              echo "for the first 'error:' line, that is the real failure."
+              ls -la build_addon || true
+              exit 1
+            fi
+          done
+          file build_addon/guideReader build_addon/guidemon
+
+      - name: Upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: guide-reader-bin
+          path: build_addon/*
+          if-no-files-found: error
