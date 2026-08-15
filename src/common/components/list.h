@@ -415,8 +415,16 @@ void list_getItemValueLabel(ListItem *item, char *out_label)
 {
     if (item->value_formatter != NULL)
         item->value_formatter(item, out_label);
-    else if (item->value_labels[0][0] != '\0')
-        sprintf(out_label, "%s", item->value_labels[item->value]);
+    else if (item->value_labels[0][0] != '\0') {
+        // A value out of range (e.g. written into the config by hand, or left
+        // behind by a newer build) has no label - fall back to the number
+        // rather than handing an empty string to the renderer
+        int value = item->value;
+        if (value < 0 || value >= MAX_NUM_VALUES || item->value_labels[value][0] == '\0')
+            sprintf(out_label, "%d", item->value);
+        else
+            sprintf(out_label, "%s", item->value_labels[value]);
+    }
     else
         sprintf(out_label, "%d", item->value);
 }

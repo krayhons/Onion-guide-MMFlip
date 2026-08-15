@@ -118,6 +118,8 @@ core: $(CACHE)/.setup
 	@cd $(SRC_DIR)/bootScreen && BUILD_DIR=$(BIN_DIR) make
 	@cd $(SRC_DIR)/chargingState && BUILD_DIR=$(BIN_DIR) make
 	@cd $(SRC_DIR)/gameSwitcher && BUILD_DIR=$(BIN_DIR) make
+	@cd $(SRC_DIR)/guideReader && BUILD_DIR=$(BIN_DIR) make
+	@cd $(SRC_DIR)/guidemon && BUILD_DIR=$(BIN_DIR) make
 	@cd $(SRC_DIR)/mainUiBatPerc && BUILD_DIR=$(BIN_DIR) make
 	@cd $(SRC_DIR)/keymon && BUILD_DIR=$(BIN_DIR) make
 	@cd $(SRC_DIR)/playActivity && BUILD_DIR=$(BIN_DIR) make

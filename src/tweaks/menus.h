@@ -10,6 +10,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "system/ingame_action.h"
+
 #include "components/kbinput_wrapper.h"
 #include "components/list.h"
 #include "system/device_model.h"
@@ -318,7 +320,10 @@ void menu_buttonActionInGameMenu(void *_)
                                  (ListItem){
                                      .label = "Double press",
                                      .item_type = MULTIVALUE,
-                                     .value_max = 4,
+                                     // "Guide" is only offered here - it is
+                                     // the one gesture the guide reader
+                                     // add-on watches for
+                                     .value_max = INGAME_ACTION_GUIDE,
                                      .value_labels = BUTTON_INGAME_LABELS,
                                      .value = settings.ingame_double_press,
                                      .action_id = 5,

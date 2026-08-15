@@ -15,9 +15,10 @@
     {                                                 \
         "Context menu", "GameSwitcher", "Resume game" \
     }
-#define BUTTON_INGAME_LABELS                                                \
-    {                                                                       \
-        "Off", "GameSwitcher", "Exit to menu", "Quick switch", "Quick menu" \
+#define BUTTON_INGAME_LABELS                                        \
+    {                                                               \
+        "Off", "GameSwitcher", "Exit to menu", "Quick switch",      \
+            "Quick menu", "Guide"                                   \
     }
 
 #define THEME_TOGGLE_LABELS \

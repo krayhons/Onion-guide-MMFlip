@@ -160,16 +160,20 @@ void theme_renderListCustom(SDL_Surface *screen, List *list, ListRenderParams_s 
 
             char value_str[STR_MAX];
             list_getItemValueLabel(item, value_str);
+            // SDL_ttf returns NULL for an empty string, which used to crash
+            // here as soon as an item held a value with no matching label
             SDL_Surface *value_label = TTF_RenderUTF8_Blended(list_font, value_str, theme()->list.color);
-            if (show_disabled) {
-                surfaceSetAlpha(value_label, HIDDEN_ITEM_ALPHA);
+            if (value_label != NULL) {
+                if (show_disabled) {
+                    surfaceSetAlpha(value_label, HIDDEN_ITEM_ALPHA);
+                }
+                SDL_Rect value_size = {0, 0, multivalue_width, value_label->h};
+                int label_width = value_label->w > value_size.w ? value_size.w : value_label->w;
+                SDL_Rect value_pos = {
+                    640 * g_scale - 20 * g_scale - arrow_right->w - multivalue_width / 2 - label_width / 2,
+                    item_center_y - value_size.h / 2};
+                SDL_BlitSurface(value_label, &value_size, screen, &value_pos);
             }
-            SDL_Rect value_size = {0, 0, multivalue_width, value_label->h};
-            int label_width = value_label->w > value_size.w ? value_size.w : value_label->w;
-            SDL_Rect value_pos = {
-                640 * g_scale - 20 * g_scale - arrow_right->w - multivalue_width / 2 - label_width / 2,
-                item_center_y - value_size.h / 2};
-            SDL_BlitSurface(value_label, &value_size, screen, &value_pos);
         }
 
         theme_renderListLabel(screen, item->label, theme()->list.color,

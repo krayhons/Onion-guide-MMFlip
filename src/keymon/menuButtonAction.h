@@ -4,6 +4,7 @@
 #include <time.h>
 
 #include "system/clock.h"
+#include "system/ingame_action.h"
 #include "system/keymap_hw.h"
 #include "system/rumble.h"
 #include "system/screenshot.h"
@@ -212,6 +213,19 @@ void action_RA_toggleMenu(void)
     retroarch_toggleMenu();
 }
 
+//
+//    Show the guide for the running game on top of the paused emulator.
+//    guideReader takes over the framebuffer and grabs the input device, then
+//    unpauses RetroArch again when it exits.
+//
+void action_RA_guide(void)
+{
+    if (temp_flag_get("guideReader_open"))
+        return;
+    retroarch_pause();
+    system("guideReader --overlay &");
+}
+
 void action_drastic_gameSwitcher(void)
 {
     enableSavingMessage();
@@ -262,6 +276,9 @@ void activate_RA_action(int action_id)
         break;
     case 4:
         action_RA_toggleMenu();
+        break;
+    case INGAME_ACTION_GUIDE:
+        action_RA_guide();
         break;
     default:
         break;
